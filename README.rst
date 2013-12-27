@@ -1,7 +1,7 @@
 sentry-flowdock
 ===============
 
-An extension for Sentry which sends notifications to Flowdock.
+An extension for Sentry which sends notifications to your Flowdock Team Inbox.
 
 Install
 -------
