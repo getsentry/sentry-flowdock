@@ -1,0 +1,32 @@
+{% load sentry_helpers %}
+{% load i18n %}
+
+<h2>
+    {% url 'sentry-stream' group.project.team.slug group.project.slug as project_link %}
+    {% if group.times_seen == 1 %}
+        New Event on <a href="{% absolute_uri project_link %}" class="highlight">{{ group.project.name }}</a>
+    {% else %}
+        Regression on <a href="{% absolute_uri project_link %}" class="highlight">{{ group.project.name }}</a>
+    {% endif %}
+</h2>
+
+<pre class="message">{{ event.message }}</pre>
+
+<h3>Tags</h3>
+
+<ul class="tag-list">
+{% for tag_key, tag_value in tags %}
+    <li>
+        <strong>{{ tag_key }}</strong>
+        <em>=</em>
+        <span><a href="{% absolute_uri project_link %}?{{ tag_key }}={{ tag_value }}">{{ tag_value }}</a> {% if tag_value|is_url %}<a href="{{ tag_value }}" class="icon-share"></a>{% endif %}</span>
+    </li>
+{% endfor %}
+</ul>
+
+{% for label, text in interfaces %}
+<div class="interface">
+    <h3 class="title">{{ label }}</h3>
+	{{ text }}
+</div>
+{% endfor %}

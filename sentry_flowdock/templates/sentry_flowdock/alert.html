@@ -1,0 +1,18 @@
+<pre>{{ alert.message }}</pre>
+
+<p><a href="{{ link }}">{{ link }}</a></p>
+
+<table class="metadata">
+    <colgroup>
+        <col style="width:25%;">
+        <col style="width:25%;">
+        <col style="width:25%;">
+        <col style="width:25%;">
+    </colgroup>
+    <tr>
+        <th>{% trans "Datetime:" %}</th>
+        <td>{{ alert.datetime }}</td>
+        <th>{% trans "Project:" %}</th>
+        <td>{{ alert.project.name }}</td>
+    </tr>
+</table>
