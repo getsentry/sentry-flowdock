@@ -57,8 +57,8 @@ class FlowdockMessage(NotifyPlugin):
         )
 
     def post_process(self, group, event, is_new, is_sample, **kwargs):
-        # if not is_new:
-        #     return
+        if not is_new:
+            return
 
         project = group.project
         token = self.get_option('token', project)
