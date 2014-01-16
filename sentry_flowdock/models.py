@@ -96,6 +96,7 @@ class FlowdockMessage(NotifyPlugin):
         context = {
             'source': 'Sentry',
             'from_address': settings.DEFAULT_FROM_EMAIL,
+            'from_name': "Sentry",
             'subject': subject,
             'content': message,
             'link': link,
