@@ -65,7 +65,7 @@ class FlowdockMessage(NotifyPlugin):
 
         subject = '[%s] %s: %s' % (
             project.name.encode('utf-8'),
-            unicode(event.get_level_display()).upper().encode('utf-8'),
+            unicode(group.get_level_display()).upper().encode('utf-8'),
             event.error().encode('utf-8').splitlines()[0])
 
         interface_list = []
