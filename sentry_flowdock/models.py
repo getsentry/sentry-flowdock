@@ -31,11 +31,6 @@ class FlowdockOptionsForm(forms.Form):
         help_text="Default From email address",
         initial=settings.DEFAULT_FROM_EMAIL,
     )
-    minimum_alert_level = forms.ChoiceField(
-        help_text="Minimum Level needed to notify Flowdock",
-        choices=[("{0}".format(k), "{0}".format(v.capitalize())) for k, v in LOG_LEVELS.items()],
-        initial="40"
-    )
     push_tags = forms.CharField(
         help_text='Tag keys to push as tags to Flowdock (version,level,hash)',
         initial="level,version",
@@ -66,7 +61,6 @@ class FlowdockMessage(NotifyPlugin):
         params = self.get_option
         return (params('token', project) and
                 params('from_address', project) and
-                params('minimum_alert_level', project) and
                 params('push_tags', project))
 
     def _get_flow_tags(self, group, event, push_tags, fail_silently=False):
@@ -123,10 +117,6 @@ class FlowdockMessage(NotifyPlugin):
         token = self.get_option('token', project)
         from_address = self.get_option('from_address', project)
         push_tags = self.get_option('push_tags', project)
-        minimum_alert_level = self.get_option('minimum_alert_level', project)
-
-        if int(minimum_alert_level) > int(group.level):
-            return
 
         subject = '%s: %s' % (
             unicode(group.get_level_display()).upper().encode('utf-8'),
