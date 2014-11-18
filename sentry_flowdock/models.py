@@ -85,9 +85,10 @@ class FlowdockMessage(NotifyPlugin):
             subject=subject,
             message=message,
             link=group.get_absolute_url(),
+            **kwargs
         )
 
-    def send_payload(self, token, subject, message, link):
+    def send_payload(self, token, subject, message, link, **kwargs):
         url = self.base_url.format(token=token)
 
         context = {
@@ -110,4 +111,7 @@ class FlowdockMessage(NotifyPlugin):
         try:
             urllib2.urlopen(request, body)
         except urllib2.HTTPError as e:
-            self.logger.exception('Unexpected response from Flowdock: %s', e.read())
+            if kwargs.get('fail_silently', False):
+                self.logger.exception('Unexpected response from Flowdock: %s', e.read())
+            else:
+                raise
