@@ -1,19 +1,43 @@
+# -*- coding: utf-8 -*-
+"""tasks.py: Django core"""
+
+from __future__ import unicode_literals
+from __future__ import print_function
+
+import re
+import json
+import logging
+import urllib
+
 from django import forms
 from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.utils.safestring import mark_safe
 
+import requests
+
+from sentry.constants import LOG_LEVELS
 from sentry.plugins.bases.notify import NotifyPlugin
 from sentry.web.helpers import render_to_string
 
 import sentry_flowdock
-import json
-import logging
-import urllib2
 
 
 class FlowdockOptionsForm(forms.Form):
-    token = forms.CharField(help_text='Your flow API token.')
+    token = forms.CharField(
+        help_text='Your flow API token.')
+    from_address = forms.EmailField(
+        help_text="Default From email address",
+        initial=settings.DEFAULT_FROM_EMAIL,
+    )
+    push_tags = forms.CharField(
+        help_text='Tag keys to push as tags to Flowdock (version,level,hash)',
+        initial="level,version",
+        required=False)
 
+
+ALPHANUMERIC_UNDERSCORES_WHITESPACE = r'^[a-z0-9_ ]+$'
 
 class FlowdockMessage(NotifyPlugin):
     author = 'Sentry Team'
@@ -33,12 +57,40 @@ class FlowdockMessage(NotifyPlugin):
     logger = logging.getLogger('sentry.errors')
     base_url = 'https://api.flowdock.com/v1/messages/team_inbox/{token}'
 
-    def is_configured(self, project):
-        return all((self.get_option(k, project) for k in ('token',)))
+    def is_configured(self, project, **kwargs):
+        params = self.get_option
+        return (params('token', project) and
+                params('from_address', project) and
+                params('push_tags', project))
+
+    def _get_flow_tags(self, group, event, push_tags, fail_silently=False):
+        """Simply pull the tags the user wants into a list
+
+          If the user wants the tag 'level' then give them the value of what level is
+        """
+        try:
+            push_tags = push_tags.split(",")
+        except Exception as e:
+            self.logger.exception('Issue with tags: {err}'.format(err=e))
+            push_tags = []
+            if not fail_silently:
+                raise
+
+        flow_tags = [] if 'level' not in push_tags else [group.get_level_display()]
+        for tag in push_tags:
+            if tag != "level":
+                try:
+                    flow_tags.append(dict(event.get_tags()).get(tag))
+                except Exception as e:
+                    self.logger.exception('Unexpected response from Flowdock: {err}'.format(err=e))
+                    if not fail_silently:
+                        raise
+        return flow_tags
 
     def on_alert(self, alert, **kwargs):
         project = alert.project
         token = self.get_option('token', project)
+        from_address = self.get_option('from_address', project)
 
         subject = '[{0}] ALERT: {1}'.format(
             project.name.encode('utf-8'),
@@ -50,18 +102,23 @@ class FlowdockMessage(NotifyPlugin):
         })
 
         self.send_payload(
-            token=token,
+            source=kwargs.get('source', 'Sentry'),
+            from_address=from_address,
             subject=subject,
-            message=message,
+            content=message,
+            from_name=kwargs.get('from_name', "Sentry"),
             link=alert.get_absolute_url(),
+            token=token,
+            **kwargs
         )
 
-    def notify_users(self, group, event, **kwargs):
+    def notify_users(self, group, event, fail_silently=False, **kwargs):
         project = group.project
         token = self.get_option('token', project)
+        from_address = self.get_option('from_address', project)
+        push_tags = self.get_option('push_tags', project)
 
-        subject = '[%s] %s: %s' % (
-            project.name.encode('utf-8'),
+        subject = '%s: %s' % (
             unicode(group.get_level_display()).upper().encode('utf-8'),
             event.error().encode('utf-8').splitlines()[0])
 
@@ -80,34 +137,66 @@ class FlowdockMessage(NotifyPlugin):
             'tags': event.get_tags(),
         })
 
+        flow_tags = self._get_flow_tags(group, event, push_tags, fail_silently)
+
         self.send_payload(
-            token=token,
+            source=kwargs.get('source', 'Sentry'),
+            from_address=from_address,
             subject=subject,
-            message=message,
+            content=message,
+            from_name=kwargs.get('from_name', "Sentry"),
+            tags=flow_tags,
             link=group.get_absolute_url(),
+            project=project.name,
+            token=token,
+            fail_silently=fail_silently,
+            **kwargs
         )
 
-    def send_payload(self, token, subject, message, link):
-        url = self.base_url.format(token=token)
+    def send_payload(self, source, from_address, subject, content, project=None,
+                     from_name=None, tags=None, link=None, token=None,
+                     format="html", encoding="utf-8", fail_silently=False, **kwargs):
+        """This will send the message off to flowdock"""
 
-        context = {
-            'source': 'Sentry',
-            'from_address': settings.DEFAULT_FROM_EMAIL,
-            'from_name': "Sentry",
-            'subject': subject,
-            'content': message,
-            'link': link,
-        }
+        assert len(content) <= 8096, \
+            'The `content` argument length must be 8096 characters or less. You are {}'.format(
+                len(content))
 
-        body = json.dumps(context)
+        assert re.match(ALPHANUMERIC_UNDERSCORES_WHITESPACE, source, re.IGNORECASE), \
+            'The `source` argument must contain only alphanumeric ' \
+            'characters, underscores and whitespace.'
 
-        headers = {
-            'Content-Type': 'application/json',
-            'User-Agent': 'sentry-flowdock/%s' % (self.version,),
-        }
-
-        request = urllib2.Request(url, headers=headers)
         try:
-            urllib2.urlopen(request, body)
-        except urllib2.HTTPError as e:
-            self.logger.exception('Unexpected response from Flowdock: %s', e.read())
+            validate_email(from_address)
+        except ValidationError:
+            raise ValidationError("'{addr}' is not a valid email address".format(addr=from_address))
+
+        data = {'source': source.encode(encoding), 'from_address': from_address.encode(encoding),
+                'subject': subject.encode(encoding), 'content': content.encode(encoding)}
+
+        if project:
+            assert re.match(ALPHANUMERIC_UNDERSCORES_WHITESPACE, project, re.IGNORECASE), \
+                'The `project` argument must contain only alphanumeric ' \
+                'characters, underscores and whitespace.'
+            data['project'] = project.encode(encoding)
+
+        if tags:
+            assert isinstance(tags, (list, tuple)), "The `tags` must be a list"
+            data['tags'] = ",".join(["#{tag}".format(tag=x) for x in tags]).encode(encoding)
+
+        for item, label in [(from_name, "from_name"), (link, "link"), (format, "format")]:
+            if item and len(item):
+                data[label] = item
+
+        encoded_data = urllib.urlencode(data)
+
+        url = "https://api.flowdock.com/v1/messages/team_inbox/{token}".format(token=token)
+        response = requests.post(url, data=encoded_data)
+        data = json.loads(response.text)
+        if response.status_code == 200:
+            self.logger.info("[{code}] {text}".format(text=data, code=response.status_code))
+            return True
+
+        self.logger.error('Unexpected response from Flowdock: %s', data)
+        if not fail_silently:
+            raise requests.HTTPError("{err}".format(err=data))
