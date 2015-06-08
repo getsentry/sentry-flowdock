@@ -68,6 +68,9 @@ class FlowdockMessage(NotifyPlugin):
 
           If the user wants the tag 'level' then give them the value of what level is
         """
+        if not push_tags:
+            return []
+
         try:
             push_tags = push_tags.split(",")
         except Exception as e:
