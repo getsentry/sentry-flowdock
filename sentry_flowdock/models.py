@@ -37,7 +37,7 @@ class FlowdockOptionsForm(forms.Form):
         required=False)
 
 
-ALPHANUMERIC_UNDERSCORES_WHITESPACE = r'^[a-z0-9_ ]+$'
+INVALID_CHARS = re.compile(r'[^a-zA-Z0-9_ ]')
 
 class FlowdockMessage(NotifyPlugin):
     author = 'Sentry Team'
@@ -164,13 +164,8 @@ class FlowdockMessage(NotifyPlugin):
                      format="html", encoding="utf-8", fail_silently=False, **kwargs):
         """This will send the message off to flowdock"""
 
-        assert len(content) <= 8096, \
-            'The `content` argument length must be 8096 characters or less. You are {}'.format(
-                len(content))
-
-        assert re.match(ALPHANUMERIC_UNDERSCORES_WHITESPACE, source, re.IGNORECASE), \
-            'The `source` argument must contain only alphanumeric ' \
-            'characters, underscores and whitespace.'
+        content = content[:8096]
+        source = INVALID_CHARS.sub(' ', source)
 
         try:
             validate_email(from_address)
@@ -181,10 +176,7 @@ class FlowdockMessage(NotifyPlugin):
                 'subject': subject.encode(encoding), 'content': content.encode(encoding)}
 
         if project:
-            assert re.match(ALPHANUMERIC_UNDERSCORES_WHITESPACE, project, re.IGNORECASE), \
-                'The `project` argument must contain only alphanumeric ' \
-                'characters, underscores and whitespace.'
-            data['project'] = project.encode(encoding)
+            data['project'] = INVALID_CHARS.sub(' ', project).encode(encoding)
 
         if tags:
             assert isinstance(tags, (list, tuple)), "The `tags` must be a list"
