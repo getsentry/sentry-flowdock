@@ -116,6 +116,9 @@ class FlowdockMessage(NotifyPlugin):
         )
 
     def notify_users(self, group, event, fail_silently=False, **kwargs):
+        if not self.is_configured(group.project):
+            return
+
         project = group.project
         token = self.get_option('token', project)
         from_address = self.get_option('from_address', project)
