@@ -83,7 +83,7 @@ class FlowdockMessage(NotifyPlugin):
         for tag in push_tags:
             if tag != "level":
                 try:
-                    flow_tags.append(dict(event.get_tags()).get(tag))
+                    flow_tags.append(dict(event.tags).get(tag))
                 except Exception as e:
                     self.logger.exception('Unexpected response from Flowdock: {err}'.format(err=e))
                     if not fail_silently:
@@ -126,7 +126,7 @@ class FlowdockMessage(NotifyPlugin):
 
         subject = '%s: %s' % (
             unicode(group.get_level_display()).upper().encode('utf-8'),
-            event.error().encode('utf-8').splitlines()[0])
+            event.title.encode('utf-8').splitlines()[0])
 
         interface_list = []
         for interface in event.interfaces.itervalues():
@@ -140,7 +140,7 @@ class FlowdockMessage(NotifyPlugin):
             'event': event,
             'link': 'http://example.com/link',
             'interfaces': interface_list,
-            'tags': event.get_tags(),
+            'tags': event.tags,
         })
 
         flow_tags = self._get_flow_tags(group, event, push_tags, fail_silently)
